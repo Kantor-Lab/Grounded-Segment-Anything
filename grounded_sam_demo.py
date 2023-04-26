@@ -1,4 +1,5 @@
 import argparse
+import sys
 import os
 import copy
 
@@ -99,7 +100,7 @@ def show_box(box, ax, label):
     ax.text(x0, y0, label)
 
 
-def save_mask_data(output_dir, mask_list, box_list, label_list):
+def save_mask_data(output_dir, file_name, mask_list, box_list, label_list):
     value = 0  # 0 for background
 
     mask_img = torch.zeros(mask_list.shape[-2:])
@@ -108,7 +109,7 @@ def save_mask_data(output_dir, mask_list, box_list, label_list):
     plt.figure(figsize=(10, 10))
     plt.imshow(mask_img.numpy())
     plt.axis('off')
-    plt.savefig(os.path.join(output_dir, 'mask.jpg'), bbox_inches="tight", dpi=300, pad_inches=0.0)
+    plt.savefig(os.path.join(output_dir, file_name+'_mask.jpg'), bbox_inches="tight", dpi=300, pad_inches=0.0)
 
     json_data = [{
         'value': value,
@@ -124,11 +125,12 @@ def save_mask_data(output_dir, mask_list, box_list, label_list):
             'logit': float(logit),
             'box': box.numpy().tolist(),
         })
-    with open(os.path.join(output_dir, 'mask.json'), 'w') as f:
+    with open(os.path.join(output_dir, file_name+'_mask.json'), 'w') as f:
         json.dump(json_data, f)
     
 
-if __name__ == "__main__":
+def main(args):
+    print('Args', args)
 
     parser = argparse.ArgumentParser("Grounded-Segment-Anything Demo", add_help=True)
     parser.add_argument("--config", type=str, required=True, help="path to config file")
@@ -138,17 +140,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sam_checkpoint", type=str, required=True, help="path to checkpoint file"
     )
-    parser.add_argument("--input_image", type=str, required=True, help="path to image file")
     parser.add_argument("--text_prompt", type=str, required=True, help="text prompt")
-    parser.add_argument(
-        "--output_dir", "-o", type=str, default="outputs", required=True, help="output directory"
-    )
-
+    parser.add_argument("--input_image", type=str, required=True, help="path to image file")
     parser.add_argument("--box_threshold", type=float, default=0.3, help="box threshold")
     parser.add_argument("--text_threshold", type=float, default=0.25, help="text threshold")
 
     parser.add_argument("--device", type=str, default="cpu", help="running on cpu only!, default=False")
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     # cfg
     config_file = args.config  # change the path of the model config file
@@ -156,10 +154,11 @@ if __name__ == "__main__":
     sam_checkpoint = args.sam_checkpoint
     image_path = args.input_image
     text_prompt = args.text_prompt
-    output_dir = args.output_dir
+    output_dir = os.path.join(os.path.dirname(os.path.dirname(image_path)), 'outputs')
     box_threshold = args.box_threshold
-    text_threshold = args.text_threshold
+    text_threshold = args.box_threshold
     device = args.device
+    file_name = os.path.basename(image_path)
 
     # make dir
     os.makedirs(output_dir, exist_ok=True)
@@ -169,7 +168,7 @@ if __name__ == "__main__":
     model = load_model(config_file, grounded_checkpoint, device=device)
 
     # visualize raw image
-    image_pil.save(os.path.join(output_dir, "raw_image.jpg"))
+    # image_pil.save(os.path.join(output_dir, "tomato-raw_image.jpg"))
 
     # run grounding dino model
     boxes_filt, pred_phrases = get_grounding_output(
@@ -177,7 +176,7 @@ if __name__ == "__main__":
     )
 
     # initialize SAM
-    predictor = SamPredictor(build_sam(checkpoint=sam_checkpoint).to(device))
+    predictor = SamPredictor(build_sam(checkpoint=sam_checkpoint))
     image = cv2.imread(image_path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     predictor.set_image(image)
@@ -190,12 +189,12 @@ if __name__ == "__main__":
         boxes_filt[i][2:] += boxes_filt[i][:2]
 
     boxes_filt = boxes_filt.cpu()
-    transformed_boxes = predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2]).to(device)
+    transformed_boxes = predictor.transform.apply_boxes_torch(boxes_filt, image.shape[:2])
 
     masks, _, _ = predictor.predict_torch(
         point_coords = None,
         point_labels = None,
-        boxes = transformed_boxes.to(device),
+        boxes = transformed_boxes,
         multimask_output = False,
     )
     
@@ -209,9 +208,12 @@ if __name__ == "__main__":
 
     plt.axis('off')
     plt.savefig(
-        os.path.join(output_dir, "grounded_sam_output.jpg"), 
+        os.path.join(output_dir, file_name), 
         bbox_inches="tight", dpi=300, pad_inches=0.0
     )
+    file_name = file_name.split('.')[0]
+    save_mask_data(output_dir, file_name, masks, boxes_filt, pred_phrases)
 
-    save_mask_data(output_dir, masks, boxes_filt, pred_phrases)
 
+if __name__ == "__main__":
+    main(sys.argv[1:])

@@ -39,7 +39,7 @@ def get_sine_pos_embed(
     """
     scale = 2 * math.pi
     dim_t = torch.arange(num_pos_feats, dtype=torch.float32, device=pos_tensor.device)
-    dim_t = temperature ** (2 * torch.div(dim_t, 2, rounding_mode="floor") / num_pos_feats)
+    dim_t = temperature ** (2 * torch.div(dim_t, 2) / num_pos_feats)
 
     def sine_func(x: torch.Tensor):
         sin_x = x * scale / dim_t
@@ -206,7 +206,7 @@ def gen_sineembed_for_position(pos_tensor):
     # sineembed_tensor = torch.zeros(n_query, bs, 256)
     scale = 2 * math.pi
     dim_t = torch.arange(128, dtype=torch.float32, device=pos_tensor.device)
-    dim_t = 10000 ** (2 * (torch.div(dim_t, 2, rounding_mode='floor')) / 128)
+    dim_t = 10000 ** (2 * (torch.div(dim_t, 2)) / 128)
     x_embed = pos_tensor[:, :, 0] * scale
     y_embed = pos_tensor[:, :, 1] * scale
     pos_x = x_embed[:, :, None] / dim_t
